@@ -7,10 +7,20 @@ import random
 
 import os
 
+def resource_path(relative_path):
+    """ 절대 경로 리턴 (PyInstaller에서 사용) """
+    try:
+        # PyInstaller의 _MEIPASS 경로를 통해 파일 위치를 얻음
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 ################# 게임 경로(path) 설정 #######################
 # print(__file__) # 현재 작업 공간의 파일 이름까지 포함해서 출력
 # print(os.path.dirname(__file__)) # 현재 작업 공간의 파일 이름은 제외하고, 상위 경로까지만 출력
-GAME_ROOT_FOLDER = os.path.dirname(__file__)
+GAME_ROOT_FOLDER = resource_path(".")
 IMAGE_FOLDER = os.path.join(GAME_ROOT_FOLDER, "GameImages")
 SCORE_FILE = os.path.join(GAME_ROOT_FOLDER, "score.txt")
 
@@ -27,7 +37,7 @@ eNum = -1
 
 ################ 노래 추가 #################################
 pygame.mixer.init()
-pygame.mixer.music.load('Dontstopme.mp3')
+pygame.mixer.music.load(resource_path('Dontstopme.mp3'))
 pygame.mixer.music.play(-1, 0.0)
 
 ################# 최고 점수 파일 불러오기 ######################
@@ -52,7 +62,7 @@ textSize = 48
 
 
 ################## 게임 종료 함수(사용자 정의) ####################
-def GameOver():
+def GameOver(enemy_cars):
     global high_score
     if score > high_score:
         high_score = score
@@ -93,7 +103,8 @@ def GameOver():
     pygame.display.update()
     # 객체 없애기
     player_car.kill()
-    enemy_car.kill()
+    for i in enemy_cars:
+        i.kill()
     
     # 종료 조건 : 엔터 입력 기다림
     wait_for_enter()
@@ -177,8 +188,12 @@ player_car.rect = player_car.surf.get_rect(center = (h, v))
 # enemy_car.image = ENEMY_CAR_IMG
 # enemy_car.surf = pygame.Surface(ENEMY_CAR_IMG.get_size())
 # enemy_car.rect = enemy_car.surf.get_rect(center = (h, v))
+enemy_cars = pygame.sprite.Group()
 
 
+# 초기 스폰 간격 설정
+enemy_spawn_interval = random.randrange(500, 1000)
+last_enemy_spawn_time = 0
 
 ################## 메인 루프 ##################################
 while True:
@@ -191,67 +206,62 @@ while True:
     ############# (초기)player_car 화면에 두기 #############
     screen.blit(player_car.image, player_car.rect)
     
-    ############ 적이 있는지 확인하기
-    if eNum == -1 :
-        # 무작위로 적 발생시키기
-        eNum = random.randrange(0, len(ENEMY_CAR_IMG))
-        # 적 초기 위치 계산하기
-        # enemy_car.rect.top = 0 # 적 자동차 다시 위로 올려보내기
-        hl = ENEMY_CAR_IMG[eNum].get_width()//2 
-        hr = ROAD_IMG.get_width() - (ENEMY_CAR_IMG[eNum].get_width()//2)
-        h = random.randrange(hl, hr)
-        v = 0
-        # enemy sprite 만들기
-        enemy_car = pygame.sprite.Sprite()
-        enemy_car.image = ENEMY_CAR_IMG[eNum]
-        enemy_car.surf = pygame.Surface(ENEMY_CAR_IMG[eNum].get_size())
-        enemy_car.rect = enemy_car.surf.get_rect(center = (h, v))
+    ############# 적을 일정 간격으로 1~3개 생성하기 ############
+    current_time = pygame.time.get_ticks()
+    if current_time - last_enemy_spawn_time > enemy_spawn_interval:
+        num_enemies = random.randint(2, 4)
+
+        for _ in range(num_enemies):
+            eNum = random.randrange(0, len(ENEMY_CAR_IMG))
+            # 적 초기 위치 계산 (화면 내 랜덤한 위치에)
+            hl = ENEMY_CAR_IMG[eNum].get_width() // 2
+            hr = ROAD_IMG.get_width() - (ENEMY_CAR_IMG[eNum].get_width() // 2)
+            h = random.randrange(hl, hr)  # 랜덤 위치
+            v = 0
+            # enemy sprite 만들기
+            enemy_car = pygame.sprite.Sprite()
+            enemy_car.image = ENEMY_CAR_IMG[eNum]
+            enemy_car.surf = pygame.Surface(ENEMY_CAR_IMG[eNum].get_size())
+            enemy_car.rect = enemy_car.surf.get_rect(center=(h, v))
+            enemy_car.speed = random.randrange(5, 8)  # 속도 랜덤 설정
+            
+            # 적을 그룹에 추가
+            enemy_cars.add(enemy_car)
         
-        # enemy_car.rect.center = (h, v)
-        # enemy_car_speed = random.randrange(4,7)
-        # score += 1 # player가 enemy를 피한것으로 간주하고, score를 증가시키기
-    
-    
-    
+        # 적이 생성될 때마다 스폰 간격을 500~1200 사이에서 랜덤하게 재설정
+        enemy_spawn_interval = random.randrange(200, 800)
+        last_enemy_spawn_time = current_time
+
     # Player_car 움직이기
     keys = pygame.key.get_pressed()
     
     if keys[K_LEFT] and player_car.rect.left > 0 :
-        player_car.rect.move_ip(-player_move_speed, 0) # 왼쪽으로 이동
+        player_car.rect.move_ip(-player_move_speed, 0)  # 왼쪽으로 이동
         if player_car.rect.left < 0 :
-            player_car.rect.left = 0 # 너무 왼쪽으로 갔다면, 되돌리기
+            player_car.rect.left = 0  # 너무 왼쪽으로 갔다면, 되돌리기
     if keys[K_RIGHT] and player_car.rect.right < ROAD_IMG.get_width() :
-        player_car.rect.move_ip(player_move_speed, 0) # 오른쪽으로 이동
+        player_car.rect.move_ip(player_move_speed, 0)  # 오른쪽으로 이동
         if player_car.rect.right > ROAD_IMG.get_width() :
-            player_car.rect.right = ROAD_IMG.get_width() # 너무 오른쪽으로 갔다면, 되돌리기
+            player_car.rect.right = ROAD_IMG.get_width()  # 너무 오른쪽으로 갔다면, 되돌리기
     
     ############# enemy_car 화면에 두기 #############
-    screen.blit(enemy_car.image, enemy_car.rect)
-    enemy_car.rect.move_ip(0, enemy_car_speed) # Arguments : 각각 수평, 수직으로 움직일 픽셀의 숫자
+    for enemy_car in enemy_cars:
+        screen.blit(enemy_car.image, enemy_car.rect)
+        enemy_car.rect.move_ip(0, enemy_car.speed)  # 적 개별 속도로 이동
     
-    if (enemy_car.rect.bottom > ROAD_IMG.get_height()): # 적 자동차가 화면 밖으로 나갈 경우
-        # # enemy_car.rect.top = 0 # 적 자동차 다시 위로 올려보내기
-        # hl = ENEMY_CAR_IMG.get_width()//2 
-        # hr = ROAD_IMG.get_width() - (ENEMY_CAR_IMG.get_width()//2) 
-        # h = random.randrange(hl, hr)
-        # v = 0
-        # enemy_car.rect.center = (h, v)
-        # enemy_car_speed = random.randrange(4,7)
-        enemy_car.kill()
-        eNum = -1
-        score += 1 # player가 enemy를 피한것으로 간주하고, score를 증가시키기
-        enemy_car_speed = random.randrange(4,8)
-        
-        
+        if (enemy_car.rect.bottom > ROAD_IMG.get_height()):  # 적이 화면 밖으로 나갈 경우
+            enemy_car.kill()  # 적 제거
+            score += 1  # player가 enemy를 피한것으로 간주하고, score를 증가
+    
     ############# enemy ~ player 충돌 감지하기 #########
-    if pygame.sprite.collide_rect(player_car, enemy_car):
-        GameOver()
+    for enemy_car in enemy_cars:
+        if pygame.sprite.collide_rect(player_car, enemy_car):
+            GameOver(enemy_cars)
     
     # 이벤트(종료 이벤트 등)확인하기
     for event in pygame.event.get(): 
-        if event.type == QUIT: # 일단 게임 종료(창 종료)조건은 사용자가 창을 닫을 경우에만 종료되는거로 (pygame의 지역 변수 사용)
+        if event.type == QUIT:  # 게임 종료 조건
             pygame.quit()
             sys.exit()
     
     pygame.display.update()
-
